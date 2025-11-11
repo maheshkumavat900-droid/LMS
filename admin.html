@@ -1,0 +1,65 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart LMS — Admin</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"><link href="style.css" rel="stylesheet"></head>
+<body>
+<nav class="navbar px-3"><a class="navbar-brand" href="dashboard.html">📚 Smart LMS</a>
+  <div class="d-flex gap-2"><button class="btn btn-outline-secondary" onclick="toggleTheme()">🌓</button><button class="btn btn-outline-primary" onclick="exportBackup()">Download Backup</button><button class="btn btn-primary" onclick="logout()">Logout</button></div></nav>
+<div class="container py-4"><div class="row g-4">
+  <div class="col-lg-4">
+    <div class="card p-3"><h5>Add / Update Book</h5>
+      <form class="vstack gap-3" onsubmit="return saveBook(event)">
+        <input type="hidden" id="id">
+        <div><label class="form-label">Title</label><input class="form-control" id="title" required></div>
+        <div><label class="form-label">Author</label><input class="form-control" id="author" required></div>
+        <div><label class="form-label">Category</label><input class="form-control" id="category"></div>
+        <div><label class="form-label">Quantity</label><input type="number" min="1" value="1" class="form-control" id="quantity" required></div>
+        <div><label class="form-label">Available</label><input type="number" min="0" value="1" class="form-control" id="available" required></div>
+        <button class="btn btn-primary neon">Save</button>
+      </form>
+      <button class="btn btn-outline-danger mt-3" onclick="resetLibrary()">Reset to Default Library</button>
+    </div>
+    <div class="card p-3 mt-4"><h5>Quick Stats</h5>
+      <ul class="list-group">
+        <li class="list-group-item d-flex justify-content-between"><span>Total Books</span><b id="statBooks">0</b></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Active Issues</span><b id="statActive">0</b></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Total Fines (All time)</span><b>₹<span id="statFines">0</span></b></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Most Issued Book</span><b id="statTopBook">-</b></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Most Active Student</span><b id="statTopStudent">-</b></li>
+      </ul>
+      <button class="btn btn-outline-secondary mt-3" onclick="downloadCSV()">Download Issues CSV</button>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card p-3"><div class="d-flex justify-content-between align-items-center"><h5 class="m-0">Books</h5><div class="d-flex gap-2"><input class="form-control" style="max-width:200px" id="q" placeholder="Search..." oninput="renderBooks()"></div></div>
+      <div class="table-responsive mt-3"><table class="table table-striped table-hover align-middle"><thead class="table-light"><tr><th>#</th><th>Title</th><th>Author</th><th>Cat</th><th>Qty</th><th>Avail</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table></div>
+    </div>
+    <div class="card p-3 mt-4"><div class="d-flex justify-content-between align-items-center"><h5 class="m-0">Book Requests (from Students)</h5><span class="small-muted">Approve to add into library</span></div>
+      <div class="table-responsive mt-3"><table class="table table-hover align-middle"><thead class="table-light"><tr><th>#</th><th>Title</th><th>Author</th><th>By</th><th>Status</th><th>Set Qty</th><th></th></tr></thead><tbody id="reqrows"></tbody></table></div>
+    </div>
+    <div class="card p-3 mt-4"><div class="d-flex justify-content-between align-items-center"><h5 class="m-0">Issued Books (All Students)</h5><input class="form-control" style="max-width:260px" id="f" placeholder="Search name/enroll/book..." oninput="renderIssues()"></div>
+      <div class="table-responsive mt-3"><table class="table table-striped table-hover align-middle"><thead class="table-light"><tr><th>#</th><th>Student</th><th>Enroll</th><th>Book</th><th>From</th><th>Till</th><th>Return</th><th>Status</th><th>Fine</th><th>Bill</th><th>Actions</th></tr></thead><tbody id="issuerows"></tbody></table></div>
+    </div>
+    <div class="card p-3 mt-4 chart-card"><h5 class="mb-2">Analytics</h5><canvas id="issuedChart"></canvas><canvas id="fineChart" class="mt-4"></canvas></div>
+  </div>
+</div></div>
+<script src="shared.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+initTheme(); seedBooksIfEmpty();
+function ensureAdmin(){ const u=session(); if(!u){ location='index.html'; return; } if(u.role!=='ADMIN'){ location='dashboard.html'; return; } }
+function logout(){ localStorage.removeItem(SESSION_KEY); location='index.html'; }
+function renderBooks(){ const q=document.getElementById('q').value?.toLowerCase()||''; const b=books().filter(x=>!q || x.title.toLowerCase().includes(q) || x.author.toLowerCase().includes(q) || (x.category||'').toLowerCase().includes(q)); rows.innerHTML=''; let i=1; b.forEach(x=> rows.insertAdjacentHTML('beforeend',`<tr><td>${i++}</td><td>${x.title}</td><td>${x.author}</td><td>${x.category||''}</td><td>${x.quantity}</td><td>${x.available}</td><td class="d-flex gap-2"><button class="btn btn-sm btn-outline-secondary" onclick='edit(${JSON.stringify(x)})'>Edit</button><button class="btn btn-sm btn-outline-danger" onclick="del(${x.id})">Delete</button></td></tr>`)); statBooks.textContent=b.length; updateStats(); }
+function edit(x){ id.value=x.id; title.value=x.title; author.value=x.author; category.value=x.category||''; quantity.value=x.quantity; available.value=x.available; window.scrollTo({top:0,behavior:'smooth'}); }
+function saveBook(e){ e.preventDefault(); const b=books(); const idv=id.value; const data={ id: idv?Number(idv):(b.length?Math.max(...b.map(x=>x.id))+1:1), title:title.value.trim(), author:author.value.trim(), category:category.value.trim(), quantity:Number(quantity.value), available:Number(available.value) }; if(idv){ const idx=b.findIndex(x=>x.id===Number(idv)); if(idx>-1) b[idx]=data; } else { b.push(data); } setBooks(b); e.target.reset(); id.value=''; renderBooks(); toast('Book saved'); return false; }
+function del(idv){ if(!confirm('Delete this book?')) return; setBooks(books().filter(x=>x.id!==idv)); renderBooks(); toast('Book deleted'); }
+function resetLibrary(){ if(!confirm('Reset to default 12 books?')) return; setBooks(defaultBooks()); renderBooks(); toast('Library reset'); }
+function renderRequests(){ const r=requests().sort((a,b)=>b.id-a.id); reqrows.innerHTML=''; let i=1; r.forEach(x=>{ const badge = x.status==='PENDING' ? 'warning' : (x.status==='APPROVED' ? 'success':'secondary'); reqrows.insertAdjacentHTML('beforeend', `<tr><td>${i++}</td><td>${x.title}</td><td>${x.author}</td><td>${x.by}</td><td><span class="badge bg-${badge}">${x.status}</span></td><td><input type="number" id="qty_${x.id}" value="3" min="1" class="form-control form-control-sm" style="width:90px"></td><td><button class="btn btn-sm btn-success" onclick="approve(${x.id})">Approve</button><button class="btn btn-sm btn-outline-danger" onclick="reject(${x.id})">Reject</button></td></tr>`); }); }
+function approve(rid){ const r=requests(); const idx=r.findIndex(x=>x.id===rid); if(idx<0) return; r[idx].status='APPROVED'; const qty = Number(document.getElementById('qty_'+rid).value)||3; const b=books(); const id = b.length? Math.max(...b.map(x=>x.id))+1 : 1; b.push({id, title:r[idx].title, author:r[idx].author, category:r[idx].category||'', quantity:qty, available:qty}); setBooks(b); setRequests(r); renderBooks(); renderRequests(); toast('Request approved & book added'); }
+function reject(rid){ const r=requests(); const idx=r.findIndex(x=>x.id===rid); if(idx<0) return; r[idx].status='REJECTED'; setRequests(r); renderRequests(); toast('Request rejected'); }
+function computeFineWithGrace(toDate, ret){ const late = Math.max(0, Math.ceil((new Date(ret+'T00:00:00')-new Date(toDate+'T00:00:00'))/86400000)); const charge = Math.max(0, late - 1); return {lateDays:late, chargeableDays:charge, fine:charge*10}; }
+function renderIssues(){ const f=document.getElementById('f').value?.toLowerCase()||''; const list=issues().filter(x=> !f || (x.userName.toLowerCase().includes(f) || (x.enrollment||'').toLowerCase().includes(f) || x.bookTitle.toLowerCase().includes(f))).sort((a,b)=>b.id-a.id); issuerows.innerHTML=''; let i=1; let totalFine=0; let active=0; list.forEach(m=>{ let status='Pending'; let fine=m.fine||0; if(!m.returnDate){ active++; const t=new Date().toISOString().slice(0,10); const c=computeFineWithGrace(m.toDate, t); fine=c.fine; status=(c.fine>0?'Overdue':'Issued'); } else { const c=computeFineWithGrace(m.toDate, m.returnDate); fine=c.fine; status=(c.fine>0?'Returned Late':'Returned'); } totalFine += fine; issuerows.insertAdjacentHTML('beforeend',`<tr><td>${i++}</td><td>${m.userName}</td><td>${m.enrollment||'-'}</td><td>${m.bookTitle}</td><td>${m.fromDate}</td><td>${m.toDate}</td><td>${m.returnDate||'-'}</td><td>${status}</td><td>₹${fine}</td><td><a class="btn btn-sm btn-outline-secondary" href="bill.html?issueId=${m.id}" target="_blank">Bill</a></td><td>${!m.returnDate?`<button class='btn btn-sm btn-outline-primary' onclick='markReturned(${m.id})'>Mark Returned</button>`:''}</td></tr>`); }); statActive.textContent=active; statFines.textContent=totalFine; const byDay={}, fineByDay={}; list.forEach(m=>{ const d=m.fromDate; byDay[d]=(byDay[d]||0)+1; if(m.returnDate){ const c=computeFineWithGrace(m.toDate, m.returnDate); const rd=m.returnDate; fineByDay[rd]=(fineByDay[rd]||0)+c.fine; } }); const issuedLabels=Object.keys(byDay).sort(); const issuedData=issuedLabels.map(k=>byDay[k]); const fineLabels=Object.keys(fineByDay).sort(); const fineData=fineLabels.map(k=>fineByDay[k]); drawCharts(issuedLabels, issuedData, fineLabels, fineData); const cntBook={}, cntStudent={}; list.forEach(m=>{ cntBook[m.bookTitle]=(cntBook[m.bookTitle]||0)+1; cntStudent[m.userName]=(cntStudent[m.userName]||0)+1; }); statTopBook.textContent = Object.entries(cntBook).sort((a,b)=>b[1]-a[1])[0]?.[0] || '-'; statTopStudent.textContent = Object.entries(cntStudent).sort((a,b)=>b[1]-a[1])[0]?.[0] || '-'; }
+function markReturned(id){ const b=books(); const arr=issues(); const rec=arr.find(x=>x.id===id && !x.returnDate); if(!rec) return; rec.returnDate = new Date().toISOString().slice(0,10); const c=computeFineWithGrace(rec.toDate, rec.returnDate); rec.fine=c.fine; rec.lateDays=c.lateDays; rec.chargeDays=c.chargeableDays; const bk=b.find(x=>x.id===rec.bookId); if(bk) bk.available++; setBooks(b); setIssues(arr); renderIssues(); toast('Marked returned'); }
+let issuedChart, fineChart; function drawCharts(l1,d1,l2,d2){ if(issuedChart){ issuedChart.destroy(); } if(fineChart){ fineChart.destroy(); } const dark = document.body.getAttribute('data-theme')==='dark'; const gridColor = dark ? '#2a3659' : '#e5e7eb'; const textColor = dark ? '#e5e7eb' : '#0f172a'; issuedChart = new Chart(document.getElementById('issuedChart').getContext('2d'), { type:'line', data:{labels:l1, datasets:[{label:'Books Issued', data:d1, borderWidth:2, fill:false}]}, options:{responsive:true, scales:{x:{grid:{color:gridColor}}, y:{grid:{color:gridColor}}}, plugins:{legend:{labels:{color:textColor}}, tooltip:{}} }}); fineChart = new Chart(document.getElementById('fineChart').getContext('2d'), { type:'bar', data:{labels:l2, datasets:[{label:'Fine Collected', data:d2}]}, options:{responsive:true, scales:{x:{grid:{color:gridColor}}, y:{grid:{color:gridColor}}}, plugins:{legend:{labels:{color:textColor}}, tooltip:{}} }}); }
+function downloadCSV(){ const list=issues(); let csv='Student,Enrollment,Book,From,To,Return,Fine\n'; list.forEach(m=>{ csv+=`"${m.userName}","${m.enrollment||''}","${m.bookTitle}","${m.fromDate}","${m.toDate}","${m.returnDate||''}",${m.fine||0}\n`; }); const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='issues.csv'; a.click(); URL.revokeObjectURL(url); }
+function updateStats(){ renderIssues(); } function init(){ ensureAdmin(); renderBooks(); renderRequests(); renderIssues(); } init();
+</script><script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script></body></html>
